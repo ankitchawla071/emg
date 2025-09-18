@@ -7,8 +7,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 import threading
 
 # ------------------ CONFIG ------------------
-TELEGRAM_TOKEN = "123456789:ABCDefGhijkLmnoPQRstuVWxyZ"  # <-- Hardcoded bot token
-CHAT_ID = "987654321"                                     # <-- Hardcoded chat ID
+TELEGRAM_TOKEN = "8313892359:AAE2kl_X7YMqtE4aAbblatrsD87y9qWt67w"  # <-- Hardcoded bot token
+CHAT_ID = "802173334"                                     # <-- Hardcoded chat ID
 THRESHOLD_FILE = "threshold.txt"
 CSV_FILE = "data.csv"
 
