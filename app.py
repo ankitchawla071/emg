@@ -6,8 +6,8 @@ from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # ------------------ CONFIG ------------------
-TELEGRAM_TOKEN = os.getenv("8313892359:AAE2kl_X7YMqtE4aAbblatrsD87y9qWt67w")
-CHAT_ID = os.getenv("802173334")  # Your own chat id to send alerts
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")  # Your own chat id to send alerts
 THRESHOLD_FILE = "threshold.txt"
 CSV_FILE = "data.csv"
 
