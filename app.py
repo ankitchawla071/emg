@@ -1,94 +1,80 @@
-from flask import Flask, request, jsonify, render_template_string, send_file
+from flask import Flask, request, jsonify, render_template_string
 import pandas as pd
 import os
 
 app = Flask(__name__)
-CSV_FILE = "log.csv"
 
-@app.route('/data', methods=['POST'])
-def post_data():
-    content = request.get_json()
-    temp = float(content.get("temp", 0))
-    # append to CSV
-    df = pd.DataFrame([[pd.Timestamp.now(), temp]], columns=["datetime","temp"])
-    if not os.path.exists(CSV_FILE):
-        df.to_csv(CSV_FILE, index=False)
-    else:
-        df.to_csv(CSV_FILE, index=False, mode='a', header=False)
-    return jsonify({"status":"ok"})
+CSV_FILE = "data.csv"
 
-# returns full history for chart.js
-@app.route('/history')
-def history():
-    if os.path.exists(CSV_FILE):
-        df = pd.read_csv(CSV_FILE)
-        return jsonify({
-            "labels": df["datetime"].tolist(),
-            "temps": df["temp"].tolist()
-        })
-    return jsonify({"labels":[],"temps":[]})
-
-@app.route('/')
-def index():
-    html = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-    <meta charset="UTF-8">
-    <title>KOD Pump Monitoring</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    </head>
-    <body style="font-family: Arial; text-align:center; padding:20px;">
-    <h2>KOD Pump Monitoring</h2>
-    <canvas id="tempChart" width="400" height="200"></canvas>
-
-    <script>
-    const ctx = document.getElementById('tempChart').getContext('2d');
-    const tempChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [{
-                label: 'Temperature (°C)',
-                data: [],
-                borderColor: 'blue',
-                borderWidth: 2,
-                fill: false,
-                tension: 0.1
-            }]
-        },
-        options: {
-            animation: false,
-            responsive: true,
-            scales: { y: { beginAtZero:false } }
-        }
-    });
-
-    async function fetchHistory(){
-        const res = await fetch('/history');
-        const data = await res.json();
-        tempChart.data.labels = data.labels;
-        tempChart.data.datasets[0].data = data.temps;
-        tempChart.update();
+HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>ESP32 Temperature</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body style="font-family:Arial;text-align:center;">
+<h2>ESP32 Temperature Live</h2>
+<canvas id="tempChart" width="600" height="300"></canvas>
+<script>
+const ctx = document.getElementById('tempChart').getContext('2d');
+const chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [{
+        label: 'Temperature (°C)',
+        data: [],
+        borderColor: 'blue',
+        borderWidth: 2,
+        fill: false,
+        tension: 0.1
+    }]},
+    options: {
+        animation:false,
+        scales: { y: { beginAtZero:false } }
     }
+});
 
-    // load initially
-    fetchHistory();
-    // update every 5 seconds
-    setInterval(fetchHistory, 5000);
-    </script>
-    <p><a href="/download">Download CSV</a></p>
-    </body>
-    </html>
-    """
-    return render_template_string(html)
+async function fetchData() {
+    const res = await fetch('/data');
+    const d = await res.json();
+    const now = new Date().toLocaleTimeString();
+    chart.data.labels.push(now);
+    chart.data.datasets[0].data.push(d.temp);
+    if(chart.data.labels.length>50){
+      chart.data.labels.shift();
+      chart.data.datasets[0].data.shift();
+    }
+    chart.update();
+}
+setInterval(fetchData, 2000);
+</script>
+</body>
+</html>
+"""
 
-@app.route('/download')
-def download_csv():
-    if os.path.exists(CSV_FILE):
-        return send_file(CSV_FILE, as_attachment=True)
-    return "No data yet"
+@app.route("/")
+def index():
+    return render_template_string(HTML)
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)))
+@app.route("/data", methods=["GET", "POST"])
+def data():
+    if request.method == "POST":
+        content = request.get_json()
+        temp = float(content.get("temp"))
+        df = pd.DataFrame([[pd.Timestamp.now(), temp]], columns=["datetime","temp"])
+        if not os.path.exists(CSV_FILE):
+            df.to_csv(CSV_FILE, index=False)
+        else:
+            df.to_csv(CSV_FILE, index=False, mode="a", header=False)
+        return jsonify({"status":"ok"})
+    else:
+        if not os.path.exists(CSV_FILE):
+            return jsonify({"temp":0})
+        df = pd.read_csv(CSV_FILE)
+        last = df.iloc[-1]
+        return jsonify({"temp": last["temp"]})
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5050))
+    app.run(host="0.0.0.0", port=port)
