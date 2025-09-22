@@ -76,7 +76,7 @@ def index():
     // load initially
     fetchHistory();
     // update every 5 seconds
-    setInterval(fetchHistory, 5000);
+    setInterval(fetchHistory, 1000);
     </script>
     <p><a href="/download">Download CSV</a></p>
     </body>
