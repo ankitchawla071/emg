@@ -3,7 +3,7 @@ import pandas as pd
 import os
 
 app = Flask(__name__)
-CSV_FILE = "data.csv"
+CSV_FILE = "log.csv"
 
 @app.route('/data', methods=['POST'])
 def post_data():
