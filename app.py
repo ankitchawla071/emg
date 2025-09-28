@@ -100,7 +100,7 @@ def index():
         const data = await res.json();
         if(data.temp !== null){
             // Simple "health" status
-            const health = data.temp > 40 ? '⚠️ Abnormal' : '✅ Normal';
+            const health = data.temp > 34 ? '⚠️ Abnormal' : '✅ Normal';
             document.getElementById('heading').innerText =
               `KOD Pump Monitoring | Temp: ${data.temp}°C | ${health}`;
         }
