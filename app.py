@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template_string, send_file
+from flask import Flask, request, jsonify, render_template_string
 import pandas as pd
 import os
 from datetime import datetime
@@ -8,125 +8,169 @@ app = Flask(__name__)
 CSV_FILE = "data.csv"
 IST = pytz.timezone("Asia/Kolkata")
 
+PUMPS = [
+    "KOD Pump",
+    "Degrease Pump",
+    "Cold Water Rinse Pump",
+    "Hot Water Rinse Pump"
+]
+
+THRESHOLDS = {
+    "temp": [35, 45],
+    "vibration": [4, 7],
+    "current": [6, 8]
+}
+
 
 @app.route('/data', methods=['POST'])
 def post_data():
-    content = request.get_json()
-    temp = float(content.get("temp", 0))
-
+    d = request.get_json()
     now = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
-    df = pd.DataFrame([[now, temp]], columns=["datetime", "temp"])
+
+    row = pd.DataFrame([[now, d["pump"], d["temp"], d["vibration"], d["current"]]],
+        columns=["datetime", "pump", "temp", "vibration", "current"])
 
     if not os.path.exists(CSV_FILE):
-        df.to_csv(CSV_FILE, index=False)
+        row.to_csv(CSV_FILE, index=False)
     else:
-        df.to_csv(CSV_FILE, index=False, mode='a', header=False)
+        row.to_csv(CSV_FILE, mode='a', index=False, header=False)
 
     return jsonify({"status": "ok"})
 
 
-@app.route('/history')
-def history():
-    if os.path.exists(CSV_FILE):
-        df = pd.read_csv(CSV_FILE)
-        return jsonify({
-            "labels": df["datetime"].tolist(),
-            "temps": df["temp"].tolist()
-        })
-    return jsonify({"labels": [], "temps": []})
+@app.route('/history/<pump>')
+def history(pump):
+    if not os.path.exists(CSV_FILE):
+        return jsonify({})
 
+    df = pd.read_csv(CSV_FILE)
+    df = df[df["pump"] == pump]
 
-@app.route('/latest')
-def latest():
-    """Return the most recent reading for heading display."""
-    if os.path.exists(CSV_FILE):
-        df = pd.read_csv(CSV_FILE)
-        if not df.empty:
-            last_row = df.iloc[-1]
-            return jsonify({
-                "temp": last_row["temp"],
-                "datetime": last_row["datetime"]
-            })
-    return jsonify({"temp": None, "datetime": None})
+    return jsonify({
+        "labels": df["datetime"].tolist(),
+        "temp": df["temp"].tolist(),
+        "vibration": df["vibration"].tolist(),
+        "current": df["current"].tolist()
+    })
 
 
 @app.route('/')
 def index():
-    html = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-    <meta charset="UTF-8">
-    <title>KOD Pump Monitoring</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    </head>
-    <body style="font-family: Arial; text-align:center; padding:20px;">
-    <h2 id="heading">KOD Pump Monitoring</h2>
-    <canvas id="tempChart" width="300" height="180"></canvas>
+    return render_template_string("""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Pump Monitoring Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <script>
-    const ctx = document.getElementById('tempChart').getContext('2d');
-    const tempChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [{
-                label: 'Temperature (°C)',
-                data: [],
-                borderColor: 'red',
-                borderWidth: 2,
-                fill: false,
-                tension: 0.1
-            }]
-        },
-        options: {
-            animation: false,
-            responsive: true,
-            scales: { y: { beginAtZero:false } }
-        }
-    });
+<style>
+body { margin:0; font-family:Segoe UI; background:#f4f6f9 }
+.header { background:#0f172a; color:#fff; padding:18px; font-size:20px }
+.container { padding:20px; max-width:1200px; margin:auto }
 
-    async function fetchHistory(){
-        const res = await fetch('/history');
-        const data = await res.json();
-        tempChart.data.labels = data.labels;
-        tempChart.data.datasets[0].data = data.temps;
-        tempChart.update();
-    }
+select { padding:10px; border-radius:8px; font-size:14px }
 
-    async function fetchLatest(){
-        const res = await fetch('/latest');
-        const data = await res.json();
-        if(data.temp !== null){
-            // Simple "health" status
-            const health = data.temp > 34 ? '⚠️ Abnormal' : '✅ Normal';
-            document.getElementById('heading').innerText =
-              `KOD Pump Monitoring | Temp: ${data.temp}°C | ${health}`;
-        }
-    }
+.cards {
+ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+ gap:16px; margin:20px 0
+}
 
-    // initial load
-    fetchHistory();
-    fetchLatest();
+.card {
+ background:#fff; border-radius:14px; padding:16px;
+ box-shadow:0 4px 10px rgba(0,0,0,.08)
+}
 
-    // refresh every 5s
-    setInterval(fetchHistory, 500);
-    setInterval(fetchLatest, 500);
-    </script>
-    <p><a href="/download">Download CSV</a></p>
-    </body>
-    </html>
-    """
-    return render_template_string(html)
+.value { font-size:26px; font-weight:600 }
+.normal { color:#16a34a }
+.warn { color:#d97706 }
+.alarm { color:#dc2626 }
+
+.chart-box {
+ background:#fff; border-radius:14px; padding:20px;
+ box-shadow:0 4px 10px rgba(0,0,0,.08)
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">Multi-Pump Condition Monitoring</div>
+
+<div class="container">
+
+<select id="pumpSelect" onchange="loadData()">
+{% for p in pumps %}
+<option value="{{p}}">{{p}}</option>
+{% endfor %}
+</select>
+
+<div class="cards">
+  <div class="card"><div>Temperature</div><div id="tVal" class="value">--</div></div>
+  <div class="card"><div>Vibration</div><div id="vVal" class="value">--</div></div>
+  <div class="card"><div>Current</div><div id="cVal" class="value">--</div></div>
+</div>
+
+<div class="chart-box">
+<canvas id="chart" height="120"></canvas>
+</div>
+
+</div>
+
+<script>
+const thresholds = {
+ temp:[35,45], vibration:[4,7], current:[6,8]
+};
+
+function color(val,[w,a]) {
+ if(val<=w) return "normal";
+ if(val<=a) return "warn";
+ return "alarm";
+}
+
+const chart = new Chart(document.getElementById("chart"),{
+ type:'line',
+ data:{labels:[],datasets:[
+  {label:"Temp (°C)", data:[], borderWidth:2},
+  {label:"Vibration (mm/s)", data:[], borderWidth:2},
+  {label:"Current (A)", data:[], borderWidth:2}
+ ]},
+ options:{responsive:true}
+});
+
+async function loadData(){
+ let pump = pumpSelect.value;
+ let r = await fetch("/history/"+pump);
+ let d = await r.json();
+ chart.data.labels = d.labels;
+ chart.data.datasets[0].data = d.temp;
+ chart.data.datasets[1].data = d.vibration;
+ chart.data.datasets[2].data = d.current;
+ chart.update();
+
+ if(d.temp.length){
+  let i=d.temp.length-1;
+  setVal("tVal",d.temp[i],thresholds.temp,"°C");
+  setVal("vVal",d.vibration[i],thresholds.vibration," mm/s");
+  setVal("cVal",d.current[i],thresholds.current," A");
+ }
+}
+
+function setVal(id,val,t,u){
+ let e=document.getElementById(id);
+ e.innerText=val+u;
+ e.className="value "+color(val,t);
+}
+
+loadData();
+setInterval(loadData,5000);
+</script>
+
+</body>
+</html>
+""", pumps=PUMPS)
 
 
-@app.route('/download')
-def download_csv():
-    if os.path.exists(CSV_FILE):
-        return send_file(CSV_FILE, as_attachment=True)
-    return "No data yet"
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)))
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5050)
