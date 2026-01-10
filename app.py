@@ -1,250 +1,155 @@
-from flask import Flask, request, jsonify, render_template_string
-import pandas as pd
-import os
+from flask import Flask, request, jsonify
+import pandas as pd, os
 from datetime import datetime
 import pytz
 
 app = Flask(__name__)
-CSV_FILE = "data.csv"
-IST = pytz.timezone("Asia/Kolkata")
+DATA_DIR="data"
+IST=pytz.timezone("Asia/Kolkata")
+os.makedirs(DATA_DIR,exist_ok=True)
 
-PUMPS = [
-    "KOD Pump",
-    "Degrease Pump",
-    "Cold Water Rinse Pump",
-    "Hot Water Rinse Pump"
-]
+ALARM_LIMITS={
+"KOD Pump":{"warn":40,"critical":45},
+"Degrease Pump":{"warn":42,"critical":48},
+"Cold Water Rinse Pump":{"warn":35,"critical":40},
+"Hot Water Rinse Pump":{"warn":55,"critical":60}
+}
 
-# -------------------- DATA INGEST --------------------
-@app.route("/data", methods=["POST"])
-def post_data():
-    d = request.get_json()
-    now = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
+def csv_path(p):
+    return os.path.join(DATA_DIR,p.lower().replace(" ","_")+".csv")
 
-    row = pd.DataFrame([[now, d["pump"], float(d["temp"])]],
-                       columns=["datetime", "pump", "temp"])
+# ---------------- DATA ----------------
+@app.route("/data",methods=["POST"])
+def data():
+    j=request.get_json()
+    pump=j.get("pump")
+    temp=float(j.get("temp",0))
+    now=datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
 
-    if not os.path.exists(CSV_FILE):
-        row.to_csv(CSV_FILE, index=False)
-    else:
-        row.to_csv(CSV_FILE, mode="a", index=False, header=False)
+    df=pd.DataFrame([[now,temp]],columns=["datetime","temp"])
+    f=csv_path(pump)
+    if not os.path.exists(f): df.to_csv(f,index=False)
+    else: df.to_csv(f,mode="a",header=False,index=False)
 
-    return jsonify({"status": "ok"})
+    return jsonify({"status":"ok"})
 
-
-# -------------------- HISTORY --------------------
 @app.route("/history/<pump>")
 def history(pump):
-    if not os.path.exists(CSV_FILE):
-        return jsonify({"labels": [], "temps": []})
+    f=csv_path(pump)
+    if os.path.exists(f):
+        df=pd.read_csv(f)
+        return jsonify({"labels":df["datetime"].tolist(),"temps":df["temp"].tolist()})
+    return jsonify({"labels":[],"temps":[]})
 
-    df = pd.read_csv(CSV_FILE)
-    df = df[df["pump"] == pump]
-
-    return jsonify({
-        "labels": df["datetime"].tolist(),
-        "temps": df["temp"].tolist()
-    })
-
-
-# -------------------- LATEST --------------------
 @app.route("/latest/<pump>")
 def latest(pump):
-    if not os.path.exists(CSV_FILE):
-        return jsonify({"temp": None})
+    f=csv_path(pump)
+    lim=ALARM_LIMITS.get(pump,{"warn":999,"critical":999})
+    if os.path.exists(f):
+        df=pd.read_csv(f)
+        if not df.empty:
+            t=float(df.iloc[-1]["temp"])
+            s="NORMAL"
+            if t>=lim["critical"]: s="CRITICAL"
+            elif t>=lim["warn"]: s="WARNING"
+            return jsonify({"temp":t,"datetime":df.iloc[-1]["datetime"],"status":s})
+    return jsonify({"temp":None,"datetime":None,"status":"UNKNOWN"})
 
-    df = pd.read_csv(CSV_FILE)
-    df = df[df["pump"] == pump]
+@app.route("/limits/<pump>")
+def limits(pump):
+    return jsonify(ALARM_LIMITS.get(pump,{"warn":0,"critical":0}))
 
-    if df.empty:
-        return jsonify({"temp": None})
-
-    last = df.iloc[-1]
-    return jsonify({
-        "temp": last["temp"],
-        "datetime": last["datetime"]
-    })
-
-
-# -------------------- UI RENDER --------------------
+# ---------------- DASHBOARD ----------------
 @app.route("/")
-def index():
-    return render_template_string("""
-<!DOCTYPE html>
+def dash():
+    return """
+<html><head><title>Pumps</title>
+<style>
+body{font-family:Arial;background:#0f172a;color:white;text-align:center}
+.card{display:inline-block;background:#1e293b;padding:20px;margin:15px;border-radius:12px;cursor:pointer;width:200px}
+.card:hover{background:#334155}
+</style></head><body>
+<h1>Pump Monitoring</h1>
+<div class=card onclick="go('KOD Pump')">KOD Pump</div>
+<div class=card onclick="go('Degrease Pump')">Degrease Pump</div>
+<div class=card onclick="go('Cold Water Rinse Pump')">Cold Water Rinse Pump</div>
+<div class=card onclick="go('Hot Water Rinse Pump')">Hot Water Rinse Pump</div>
+<script>
+function go(p){location='/pump?name='+encodeURIComponent(p);}
+</script>
+</body></html>
+"""
+
+# ---------------- PUMP PAGE ----------------
+@app.route("/pump")
+def pump():
+    from flask import request
+    pump=request.args.get("name","KOD Pump")
+    return f"""
 <html>
 <head>
-<meta charset="UTF-8">
-<title>Pump Monitoring Dashboard</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-
+<title>{pump}</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <style>
-body {
-    margin: 0;
-    font-family: "Segoe UI", Arial;
-    background: #f4f6f9;
-}
-
-.header {
-    background: #0f172a;
-    color: white;
-    padding: 18px 24px;
-    font-size: 20px;
-    font-weight: 600;
-}
-
-.container {
-    max-width: 1100px;
-    margin: auto;
-    padding: 20px;
-}
-
-select {
-    padding: 10px;
-    border-radius: 8px;
-    font-size: 14px;
-    margin-bottom: 20px;
-}
-
-.cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 16px;
-    margin-bottom: 20px;
-}
-
-.card {
-    background: white;
-    border-radius: 14px;
-    padding: 16px;
-    box-shadow: 0 4px 10px rgba(0,0,0,.08);
-}
-
-.card-title {
-    font-size: 14px;
-    color: #6b7280;
-}
-
-.card-value {
-    font-size: 28px;
-    font-weight: 600;
-    margin-top: 6px;
-}
-
-.normal { color: #16a34a; }
-.warn   { color: #d97706; }
-.alarm  { color: #dc2626; }
-
-.chart-box {
-    background: white;
-    border-radius: 14px;
-    padding: 20px;
-    box-shadow: 0 4px 10px rgba(0,0,0,.08);
-}
+body{{font-family:Arial;background:#020617;color:white;text-align:center}}
 </style>
 </head>
-
 <body>
 
-<div class="header">
-    Multi-Pump Temperature Monitoring
-</div>
-
-<div class="container">
-
-<select id="pumpSelect" onchange="loadData()">
-{% for p in pumps %}
-  <option value="{{p}}">{{p}}</option>
-{% endfor %}
-</select>
-
-<div class="cards">
-    <div class="card">
-        <div class="card-title">Current Temperature</div>
-        <div id="tempVal" class="card-value">-- °C</div>
-    </div>
-
-    <div class="card">
-        <div class="card-title">Pump Status</div>
-        <div id="statusVal" class="card-value">--</div>
-    </div>
-
-    <div class="card">
-        <div class="card-title">Last Updated</div>
-        <div id="timeVal" style="font-size:16px">--</div>
-    </div>
-</div>
-
-<div class="chart-box">
-    <canvas id="tempChart" height="120"></canvas>
-</div>
-
-</div>
+<h2>{pump}</h2>
+<div id="status">Loading...</div>
+<canvas id="c"></canvas>
 
 <script>
-const thresholds = { warn: 35, alarm: 45 };
+const pumpName="{pump}";
+let warn=0,crit=0;
 
-const chart = new Chart(document.getElementById("tempChart"), {
-    type: "line",
-    data: {
-        labels: [],
-        datasets: [{
-            label: "Temperature (°C)",
-            data: [],
-            borderWidth: 2,
-            tension: 0.25
-        }]
-    },
-    options: {
-        responsive: true,
-        animation: false
-    }
-});
+const ctx=document.getElementById("c");
+const chart=new Chart(ctx,{{
+type:"line",
+data:{{labels:[],datasets:[
+{{label:"Temp",data:[]}},
+{{label:"Warn",data:[],borderDash:[5,5]}},
+{{label:"Critical",data:[],borderDash:[5,5]}}
+]}},
+options:{{animation:false}}
+}});
 
-function statusClass(t) {
-    if (t <= thresholds.warn) return "normal";
-    if (t <= thresholds.alarm) return "warn";
-    return "alarm";
-}
+async function limits(){{
+let r=await fetch(`/limits/${{pumpName}}`);
+let d=await r.json();
+warn=d.warn;crit=d.critical;
+}}
 
-function statusText(t) {
-    if (t <= thresholds.warn) return "Normal";
-    if (t <= thresholds.alarm) return "Warning";
-    return "Alarm";
-}
+async function history(){{
+let r=await fetch(`/history/${{pumpName}}`);
+let d=await r.json();
+chart.data.labels=d.labels;
+chart.data.datasets[0].data=d.temps;
+chart.data.datasets[1].data=d.temps.map(()=>warn);
+chart.data.datasets[2].data=d.temps.map(()=>crit);
+chart.update();
+}}
 
-async function loadData() {
-    const pump = pumpSelect.value;
+async function latest(){{
+let r=await fetch(`/latest/${{pumpName}}`);
+let d=await r.json();
+let c="lime";
+if(d.status=="WARNING") c="orange";
+if(d.status=="CRITICAL") c="red";
+document.getElementById("status").innerHTML=
+`Temp: <b style="color:${{c}}">${{d.temp}}°C</b> | ${{d.status}}`;
+}}
 
-    const h = await fetch(`/history/${pump}`);
-    const hd = await h.json();
-    chart.data.labels = hd.labels;
-    chart.data.datasets[0].data = hd.temps;
-    chart.update();
+async function refresh(){{ await limits(); await history(); await latest(); }}
 
-    const l = await fetch(`/latest/${pump}`);
-    const ld = await l.json();
-
-    if (ld.temp !== null) {
-        tempVal.innerText = ld.temp + " °C";
-        timeVal.innerText = ld.datetime;
-
-        const cls = statusClass(ld.temp);
-        statusVal.innerText = statusText(ld.temp);
-        statusVal.className = "card-value " + cls;
-        tempVal.className = "card-value " + cls;
-    }
-}
-
-loadData();
-setInterval(loadData, 5000);
+refresh();
+setInterval(refresh,3000);
 </script>
 
 </body>
 </html>
-""", pumps=PUMPS)
+"""
 
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5050)
+if __name__=="__main__":
+    app.run(host="0.0.0.0",port=5050)
