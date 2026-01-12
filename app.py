@@ -1,10 +1,4 @@
-# Flask Pump Monitoring Server (Stable UI Version)
 
-This version fixes the **pump list flickering issue** by rendering a fixed set of pumps and only updating their status colors dynamically.
-
----
-
-```python
 from flask import Flask, request, jsonify, render_template_string
 import csv
 import os
@@ -101,7 +95,7 @@ body{font-family:Arial;background:#0f172a;color:white}
 </style>
 </head>
 <body>
-<h2>Pump Monitoring</h2>
+<h2>Machine Health Dashboard</h2>
 <div class="grid" id="pumpGrid"></div>
 
 <script>
@@ -197,31 +191,3 @@ load();
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5050)
-```
-
----
-
-## What this fixes
-
-✔ Pumps no longer appear/disappear
-✔ Cards are created once
-✔ Only color + temperature updates
-✔ Status colors:
-- Green = Normal
-- Yellow = Warning
-- Red = Critical
-
-✔ Each pump page:
-- 2 graphs (temperature + vibration)
-- Last 50 points
-- Zoom + pan enabled
-- Auto refresh
-
----
-
-If you want, I can also provide:
-
-✅ Final ESP32 code (multi pump + vibration + SD + offline sync)
-✅ Threshold customization UI
-✅ Mobile-first layout
-✅ Database version (SQLite)
