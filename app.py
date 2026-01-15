@@ -9,7 +9,6 @@ app = Flask(__name__)
 DATA_FILE = "pump_data.csv"
 THRESH_FILE = "thresholds.json"
 IST = pytz.timezone("Asia/Kolkata")
-from
 PUMPS = ["KOD Pump", "Degrease Pump", "Cold Rinse Pump", "Hot Rinse Pump"]
 
 DEFAULT_THRESH = {p: {"warning": 38, "critical": 45} for p in PUMPS}
