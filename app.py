@@ -1,191 +1,142 @@
-from flask import Flask, request, jsonify, render_template_string, redirect, session
-import csv, os, json
-from datetime import datetime
-import pytz
 
-app = Flask(__name__)
-app.secret_key = "pump-secret"
 
-DATA_FILE = "pump_data.csv"
-THRESH_FILE = "thresholds.json"
-IST = pytz.timezone("Asia/Kolkata")
+from flask import Flask, request, jsonify, render_template_string, redirect import csv, os, json from datetime import datetime import pytz
 
-PUMPS = ["KOD Pump", "Degrease Pump", "Cold Water Rinse Pump", "Hot Water Rinse Pump"]
+app = Flask(name) DATA_FILE = "pump_data.csv" THRESH_FILE = "thresholds.json" IST = pytz.timezone("Asia/Kolkata")
 
-# ---------------- INIT THRESHOLDS ----------------
+PUMPS = ["KOD Pump", "Degrease Pump", "Cold Rinse Pump", "Hot Rinse Pump", "DryOff Burner"]
 
-def init_thresholds():
-    if not os.path.exists(THRESH_FILE):
-        data = {p: {"warning": 38, "critical": 45} for p in PUMPS}
-        with open(THRESH_FILE, "w") as f:
-            json.dump(data, f, indent=2)
+DEFAULT_THRESH = {p: {"warning": 38, "critical": 45} for p in PUMPS}
 
-init_thresholds()
+def load_thresholds(): if not os.path.exists(THRESH_FILE): with open(THRESH_FILE, "w") as f: json.dump(DEFAULT_THRESH, f, indent=2) return json.load(open(THRESH_FILE))
 
-# ---------------- AUTH ----------------
+@app.route("/data", methods=["POST"]) def receive_data(): d = request.get_json() now = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
 
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        if request.form.get("user") == "admin" and request.form.get("pass") == "admin123":
-            session["user"] = "admin"
-            return redirect("/")
-    return render_template_string("""
-<form method=post style='max-width:300px;margin:auto;margin-top:100px'>
-<h3>Login</h3>
-<input name=user placeholder=Username required><br><br>
-<input name=pass placeholder=Password type=password required><br><br>
-<button>Login</button>
-</form>
-""")
+exists = os.path.isfile(DATA_FILE)
+with open(DATA_FILE, "a", newline="") as f:
+    w = csv.writer(f)
+    if not exists:
+        w.writerow(["time", "pump", "temp", "vibration"])
+    w.writerow([now, d["pump"], d["temp"], d.get("vibration", 0)])
 
-@app.before_request
-def protect():
-    if request.path.startswith("/data") or request.path.startswith("/static") or request.path == "/login":
-        return
-    if "user" not in session:
-        return redirect("/login")
+return jsonify({"ok": True})
 
-# ---------------- DATA API ----------------
+@app.route("/latest") def latest(): result = {p: None for p in PUMPS}
 
-@app.route("/data", methods=["POST"])
-def receive_data():
-    d = request.get_json()
-    now = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
+if os.path.exists(DATA_FILE):
+    rows = list(csv.DictReader(open(DATA_FILE)))
+    for r in reversed(rows):
+        if r["pump"] in result and result[r["pump"]] is None:
+            result[r["pump"]] = r
 
-    file_exists = os.path.isfile(DATA_FILE)
-    with open(DATA_FILE, "a", newline="") as f:
-        w = csv.writer(f)
-        if not file_exists:
-            w.writerow(["time", "pump", "temp", "vibration"])
-        w.writerow([now, d.get("pump"), d.get("temp"), d.get("vibration", "")])
+return jsonify({"data": result, "thresholds": load_thresholds()})
 
-    return jsonify({"status": "ok"})
+@app.route("/history/<pump>") def history(pump): labels, temps, vibes = [], [], []
 
-@app.route("/latest")
-def latest():
-    res = {p: None for p in PUMPS}
-    if os.path.exists(DATA_FILE):
-        rows = list(csv.DictReader(open(DATA_FILE)))
-        for r in reversed(rows):
-            if r.get("pump") in res and res[r["pump"]] is None:
-                res[r["pump"]] = r
-    return jsonify(res)
+if os.path.exists(DATA_FILE):
+    for r in csv.DictReader(open(DATA_FILE)):
+        if r["pump"] == pump:
+            labels.append(r["time"])
+            temps.append(float(r["temp"]))
+            vibes.append(float(r["vibration"]))
 
-@app.route("/history/<pump>")
-def history(pump):
-    l, t, v = [], [], []
-    if os.path.exists(DATA_FILE):
-        for r in csv.DictReader(open(DATA_FILE)):
-            if r.get("pump") == pump:
-                l.append(r["time"])
-                t.append(float(r["temp"]))
-                v.append(float(r["vibration"]) if r["vibration"] else 0)
-    return jsonify({"labels": l[-50:], "temps": t[-50:], "vibes": v[-50:]})
+return jsonify({"labels": labels[-50:], "temps": temps[-50:], "vibes": vibes[-50:]})
 
-# ---------------- THRESHOLD PAGE ----------------
+@app.route("/thresholds", methods=["GET", "POST"]) def thresholds(): if request.method == "POST": t = {} for p in PUMPS: t[p] = { "warning": float(request.form[f"{p}_w"]), "critical": float(request.form[f"{p}_c"]) } json.dump(t, open(THRESH_FILE, "w"), indent=2) return redirect("/thresholds")
 
-@app.route("/thresholds", methods=["GET", "POST"])
-def thresholds():
-    if request.method == "POST":
-        data = json.load(open(THRESH_FILE))
-        for p in PUMPS:
-            data[p]["warning"] = float(request.form.get(f"{p}_w"))
-            data[p]["critical"] = float(request.form.get(f"{p}_c"))
-        with open(THRESH_FILE, "w") as f:
-            json.dump(data, f, indent=2)
-        return redirect("/")
+th = load_thresholds()
 
-    t = json.load(open(THRESH_FILE))
-    return render_template_string("""
-<h2>Threshold Settings</h2>
-<form method=post>
-{% for p in pumps %}
-<b>{{p}}</b><br>
-Warning <input name='{{p}}_w' value='{{t[p]["warning"]}}'>
-Critical <input name='{{p}}_c' value='{{t[p]["critical"]}}'><br><br>
-{% endfor %}
-<button>Save</button>
-</form>
-""", pumps=PUMPS, t=t)
+return render_template_string(THRESH_HTML, pumps=PUMPS, th=th)
 
-# ---------------- DASHBOARD ----------------
+@app.route("/") def home(): return render_template_string(DASHBOARD_HTML, pumps=PUMPS)
 
-@app.route("/")
-def dash():
-    thresh = json.load(open(THRESH_FILE))
-    return render_template_string("""
-<!DOCTYPE html>
-<html>
-<head>
-<meta name=viewport content="width=device-width, initial-scale=1">
+@app.route("/pump/<pump>") def pump_page(pump): return render_template_string(PUMP_HTML, pump=pump)
+
+-------------------- HTML --------------------
+
+TOGGLE_CSS = """ .toggle{width:50px;height:26px;border-radius:20px;background:#ccc;position:relative;cursor:pointer;transition:.3s} .toggle::after{content:'';width:22px;height:22px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:.3s} .toggle.on{background:#22c55e} .toggle.on::after{left:26px} """
+
+DASHBOARD_HTML = f"""
+
+<!DOCTYPE html><html><head>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-body{font-family:sans-serif;margin:0;padding:10px}
-.dark{background:#0f172a;color:white}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
-.card{padding:15px;border-radius:10px;text-align:center;font-weight:bold}
-.normal{background:#16a34a}
-.warning{background:#facc15;color:black}
-.critical{background:#dc2626}
-.top{display:flex;justify-content:space-between}
-</style>
-</head>
-<body id="body" class="dark">
-<div class="top">
-<h3>Pump Dashboard</h3>
-<div>
-<button onclick="toggle()">🌙/☀</button>
-<a href="/thresholds">⚙</a>
-</div>
-</div>
+body{{font-family:Arial;background:#0f172a;color:white}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px}}
+.card{{padding:20px;border-radius:12px;cursor:pointer;text-align:center;font-weight:bold}}
+.normal{{background:#16a34a}}
+.warning{{background:#facc15;color:black}}
+.critical{{background:#dc2626}}
+{TOGGLE_CSS}
+</style></head>
+<body>
+<h2>Pump Monitoring</h2>
 <div class="grid" id="grid"></div>
 <script>
-const pumps = {{pumps|safe}};
-const thresholds = {{thresh|safe}};
-const grid = document.getElementById("grid");
+const pumps = {PUMPS};
+const grid = document.getElementById('grid');pumps.forEach(p=>{{ let d=document.createElement('div'); d.className='card normal'; d.id=p; d.innerText=p; d.onclick=()=>location='/pump/'+p; grid.appendChild(d); }});
 
-pumps.forEach(p => {
-  const d = document.createElement("div");
-  d.className = "card normal";
-  d.id = p;
-  d.innerText = p;
-  d.onclick = () => location = `/pump/${p}`;
-  grid.appendChild(d);
-});
+async function refresh(){{ const r=await fetch('/latest'); const j=await r.json();
 
-function statusClass(p, t){
-  if(t >= thresholds[p].critical) return "critical";
-  if(t >= thresholds[p].warning) return "warning";
-  return "normal";
-}
+pumps.forEach(p=>{{ const d=j.data[p]; if(!d) return; const t=parseFloat(d.temp); const th=j.thresholds[p]; let cls='normal'; if(t>=th.critical) cls='critical'; else if(t>=th.warning) cls='warning';
 
-async function refresh(){
-  const r = await fetch("/latest");
-  const data = await r.json();
+const c=document.getElementById(p); c.className='card '+cls; c.innerText=p+"\n"+t.toFixed(1)+"°C"; }}); }} setInterval(refresh,2000);refresh(); </script></body></html> """
 
-  pumps.forEach(p => {
-    if(data[p] && data[p].temp !== undefined){
-      const temp = parseFloat(data[p].temp);
-      const card = document.getElementById(p);
-      card.className = `card ${statusClass(p, temp)}`;
-      card.innerText = `${p}\n${temp.toFixed(1)}°C`;
-    }
-  });
-}
+PUMP_HTML = f"""
 
-setInterval(refresh, 2000);
-refresh();
+<!DOCTYPE html><html><head>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+<style>{TOGGLE_CSS}</style>
+</head>
+<body>
+<h2>{{{{pump}}}}</h2>
+<div class="toggle" id="tg"></div> Enable Alerts
+<canvas id="t"></canvas>
+<canvas id="v"></canvas><script>
+let alerts=true;
+const tg=document.getElementById('tg');
+tg.onclick=()=>{{alerts=!alerts;tg.classList.toggle('on')}};
+tg.classList.add('on');
 
-function toggle(){
-  document.getElementById("body").classList.toggle("dark");
-}
-</script>
-</body>
-</html>
-""", pumps=PUMPS, thresh=thresh)
+const tempChart=new Chart(t.getContext('2d'),{{type:'line',data:{{labels:[],datasets:[{{label:'Temp',data:[],borderColor:'red'}}]}},options:{{plugins:{{zoom:{{zoom:{{wheel:{{enabled:true}},mode:'x'}},pan:{{enabled:true,mode:'x'}}}}}}}}}});
 
-@app.route("/pump/<pump>")
+const vibChart=new Chart(v.getContext('2d'),{{type:'line',data:{{labels:[],datasets:[{{label:'Vibration',data:[],borderColor:'#22c55e'}}]}},options:{{plugins:{{zoom:{{zoom:{{wheel:{{enabled:true}},mode:'x'}},pan:{{enabled:true,mode:'x'}}}}}}}}}});
+
+async function load(){{
+ const r=await fetch('/history/{{{{pump}}}}');
+ const d=await r.json();
+ const th=(await (await fetch('/latest')).json()).thresholds['{{{{pump}}}}'];
+
+ tempChart.data.labels=d.labels;
+ tempChart.data.datasets[0].data=d.temps;
+ vibChart.data.labels=d.labels;
+ vibChart.data.datasets[0].data=d.vibes;
+
+ tempChart.options.plugins.annotation={{annotations:{{w:{{type:'line',yMin:th.warning,yMax:th.warning,borderColor:'yellow'}},c:{{type:'line',yMin:th.critical,yMax:th.critical,borderColor:'red'}}}}}};
+
+ tempChart.update();vibChart.update();
+}}
+setInterval(load,2000);load();
+</script></body></html>"""
+
+THRESH_HTML = f"""
+
+<!DOCTYPE html><html><head><style>body{{font-family:Arial;background:#0f172a;color:white}} .card{{background:#1e293b;padding:15px;margin:10px;border-radius:10px}} input{{width:60px}} button{{padding:10px;background:#22c55e;border:none}} </style></head><body>
+
+<h2>Threshold Settings</h2>
+<form method=post>
+{{% for p in pumps %}}
+<div class=card>
+<b>{{{{p}}}}</b><br>
+Warning <input name="{{{{p}}}}_w" value="{{{{th[p]['warning']}}}}">
+Critical <input name="{{{{p}}}}_c" value="{{{{th[p]['critical']}}}}">
+</div>
+{{% endfor %}}
+<button>Save</button>
+</form>
+</body></html>
+"""if name=='main': app.run(host='0.0.0.0',port=5050)@app.route("/pump/<pump>")
 def pump_page(pump):
     return render_template_string("""
 <!DOCTYPE html>
@@ -224,7 +175,7 @@ async function load(){
   vc.update();
 }
 
-setInterval(load, 2000);
+setInterval(load, 1000);
 load();
 </script>
 </body>
