@@ -10,21 +10,24 @@ DATA_FILE = "pump_data.csv"
 THRESH_FILE = "thresholds.json"
 IST = pytz.timezone("Asia/Kolkata")
 
-PUMPS = ["KOD Pump", "Degrease Pump", "Cold Rinse Pump", "Hot Rinse Pump"]
+PUMPS = ["KOD Pump", "Degrease Pump", "Cold Water Rinse Pump", "Hot Water Rinse Pump"]
 
-DEFAULT_THRESH = {
-    p: {"warning": 38, "critical": 45} for p in PUMPS
-}
+# ---------------- INIT THRESHOLDS ----------------
 
-if not os.path.exists(THRESH_FILE):
-    json.dump(DEFAULT_THRESH, open(THRESH_FILE, "w"), indent=2)
+def init_thresholds():
+    if not os.path.exists(THRESH_FILE):
+        data = {p: {"warning": 38, "critical": 45} for p in PUMPS}
+        with open(THRESH_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+
+init_thresholds()
 
 # ---------------- AUTH ----------------
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        if request.form["user"] == "admin" and request.form["pass"] == "admin123":
+        if request.form.get("user") == "admin" and request.form.get("pass") == "admin123":
             session["user"] = "admin"
             return redirect("/")
     return render_template_string("""
@@ -37,8 +40,8 @@ def login():
 """)
 
 @app.before_request
-def auth():
-    if request.path.startswith("/static") or request.path == "/login" or request.path.startswith("/data"):
+def protect():
+    if request.path.startswith("/data") or request.path.startswith("/static") or request.path == "/login":
         return
     if "user" not in session:
         return redirect("/login")
@@ -65,7 +68,7 @@ def latest():
     if os.path.exists(DATA_FILE):
         rows = list(csv.DictReader(open(DATA_FILE)))
         for r in reversed(rows):
-            if res[r["pump"]] is None:
+            if r.get("pump") in res and res[r["pump"]] is None:
                 res[r["pump"]] = r
     return jsonify(res)
 
@@ -74,22 +77,23 @@ def history(pump):
     l, t, v = [], [], []
     if os.path.exists(DATA_FILE):
         for r in csv.DictReader(open(DATA_FILE)):
-            if r["pump"] == pump:
+            if r.get("pump") == pump:
                 l.append(r["time"])
                 t.append(float(r["temp"]))
                 v.append(float(r["vibration"]) if r["vibration"] else 0)
     return jsonify({"labels": l[-50:], "temps": t[-50:], "vibes": v[-50:]})
 
-# ---------------- THRESHOLDS ----------------
+# ---------------- THRESHOLD PAGE ----------------
 
 @app.route("/thresholds", methods=["GET", "POST"])
 def thresholds():
     if request.method == "POST":
         data = json.load(open(THRESH_FILE))
         for p in PUMPS:
-            data[p]["warning"] = float(request.form[f"{p}_w"])
-            data[p]["critical"] = float(request.form[f"{p}_c"])
-        json.dump(data, open(THRESH_FILE, "w"), indent=2)
+            data[p]["warning"] = float(request.form.get(f"{p}_w"))
+            data[p]["critical"] = float(request.form.get(f"{p}_c"))
+        with open(THRESH_FILE, "w") as f:
+            json.dump(data, f, indent=2)
         return redirect("/")
 
     t = json.load(open(THRESH_FILE))
@@ -115,8 +119,7 @@ def dash():
 <html>
 <head>
 <meta name=viewport content="width=device-width, initial-scale=1">
-<script src=https://cdn.jsdelivr.net/npm/chart.js></script>
-<script src=https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 body{font-family:sans-serif;margin:0;padding:10px}
 .dark{background:#0f172a;color:white}
@@ -128,76 +131,105 @@ body{font-family:sans-serif;margin:0;padding:10px}
 .top{display:flex;justify-content:space-between}
 </style>
 </head>
-<body id=body class=dark>
-<div class=top>
+<body id="body" class="dark">
+<div class="top">
 <h3>Pump Dashboard</h3>
 <div>
 <button onclick="toggle()">🌙/☀</button>
-<a href=/thresholds>⚙</a>
+<a href="/thresholds">⚙</a>
 </div>
 </div>
-<div class=grid id=grid></div>
+<div class="grid" id="grid"></div>
 <script>
-const pumps={{pumps|safe}};
-const thresh={{thresh|safe}};
-const grid=document.getElementById("grid");
+const pumps = {{pumps|safe}};
+const thresholds = {{thresh|safe}};
+const grid = document.getElementById("grid");
 
-pumps.forEach(p=>{
- let d=document.createElement("div");
- d.className="card normal";
- d.id=p;
- d.onclick=()=>location=`/pump/${p}`;
- d.innerText=p;
- grid.appendChild(d);
+pumps.forEach(p => {
+  const d = document.createElement("div");
+  d.className = "card normal";
+  d.id = p;
+  d.innerText = p;
+  d.onclick = () => location = `/pump/${p}`;
+  grid.appendChild(d);
 });
 
-function cls(p,t){
- if(t>=thresh[p].critical) return "critical";
- if(t>=thresh[p].warning) return "warning";
- return "normal";
+function statusClass(p, t){
+  if(t >= thresholds[p].critical) return "critical";
+  if(t >= thresholds[p].warning) return "warning";
+  return "normal";
 }
 
 async function refresh(){
- const r=await fetch('/latest');
- const d=await r.json();
- pumps.forEach(p=>{
-  if(d[p]){
-   const t=parseFloat(d[p].temp);
-   const c=document.getElementById(p);
-   c.className=`card ${cls(p,t)}`;
-   c.innerText=`${p}\n${t}°C`;
-  }
- });
-}
-setInterval(refresh,2000);refresh();
+  const r = await fetch("/latest");
+  const data = await r.json();
 
-function toggle(){document.getElementById('body').classList.toggle('dark')}
+  pumps.forEach(p => {
+    if(data[p] && data[p].temp !== undefined){
+      const temp = parseFloat(data[p].temp);
+      const card = document.getElementById(p);
+      card.className = `card ${statusClass(p, temp)}`;
+      card.innerText = `${p}\n${temp.toFixed(1)}°C`;
+    }
+  });
+}
+
+setInterval(refresh, 2000);
+refresh();
+
+function toggle(){
+  document.getElementById("body").classList.toggle("dark");
+}
 </script>
-</body></html>
+</body>
+</html>
 """, pumps=PUMPS, thresh=thresh)
 
 @app.route("/pump/<pump>")
 def pump_page(pump):
     return render_template_string("""
-<html><head>
-<script src=https://cdn.jsdelivr.net/npm/chart.js></script>
-<script src=https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom></script>
-</head><body>
+<!DOCTYPE html>
+<html>
+<head>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+</head>
+<body>
 <h3>{{pump}}</h3>
-<canvas id=t></canvas><canvas id=v></canvas>
+<canvas id="t"></canvas>
+<canvas id="v"></canvas>
 <script>
-const p="{{pump}}";
-const tc=new Chart(t,{type:'line',data:{labels:[],datasets:[{label:'Temp',data:[]}]} ,options:{plugins:{zoom:{zoom:{wheel:{enabled:true}},pan:{enabled:true}}}}});
-const vc=new Chart(v,{type:'line',data:{labels:[],datasets:[{label:'Vibration',data:[]}]} ,options:{plugins:{zoom:{zoom:{wheel:{enabled:true}},pan:{enabled:true}}}}});
+const pump = "{{pump}}";
+
+const tc = new Chart(t, {
+  type:'line',
+  data:{labels:[],datasets:[{label:'Temperature',data:[]}]},
+  options:{plugins:{zoom:{zoom:{wheel:{enabled:true}},pan:{enabled:true}}}}
+});
+
+const vc = new Chart(v, {
+  type:'line',
+  data:{labels:[],datasets:[{label:'Vibration',data:[]}]},
+  options:{plugins:{zoom:{zoom:{wheel:{enabled:true}},pan:{enabled:true}}}}
+});
+
 async function load(){
- const r=await fetch(`/history/${p}`);
- const d=await r.json();
- tc.data.labels=d.labels;tc.data.datasets[0].data=d.temps;
- vc.data.labels=d.labels;vc.data.datasets[0].data=d.vibes;
- tc.update();vc.update();}
-setInterval(load,2000);load();
-</script></body></html>
+  const r = await fetch(`/history/${pump}`);
+  const d = await r.json();
+  tc.data.labels = d.labels;
+  tc.data.datasets[0].data = d.temps;
+  vc.data.labels = d.labels;
+  vc.data.datasets[0].data = d.vibes;
+  tc.update();
+  vc.update();
+}
+
+setInterval(load, 2000);
+load();
+</script>
+</body>
+</html>
 """, pump=pump)
 
-if __name__=="__main__":
+if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5050)
