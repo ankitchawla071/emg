@@ -11,7 +11,6 @@ from flask import (
 
 import csv
 import os
-import json
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
@@ -27,19 +26,31 @@ app.secret_key = os.environ.get(
     "change-this-secret-key"
 )
 
-PORT = int(os.environ.get("PORT", 5050))
+PORT = int(
+    os.environ.get(
+        "PORT",
+        5050
+    )
+)
 
 
 # ============================================================
 # LOGIN
 # ============================================================
 
-USERNAME = os.environ.get("DASHBOARD_USER", "admin")
-PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "admin123")
+USERNAME = os.environ.get(
+    "DASHBOARD_USER",
+    "admin"
+)
+
+PASSWORD = os.environ.get(
+    "DASHBOARD_PASSWORD",
+    "admin123"
+)
 
 
 # ============================================================
-# AREAS
+# SHOP FLOOR AREAS
 # ============================================================
 
 AREAS = [
@@ -52,34 +63,21 @@ AREAS = [
 
 
 # ============================================================
-# FILES
+# DATA FILE
 # ============================================================
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(
+    os.path.abspath(__file__)
+)
 
 DATA_FILE = os.path.join(
     BASE_DIR,
     "environment_data.csv"
 )
 
-THRESHOLD_FILE = os.path.join(
-    BASE_DIR,
-    "thresholds.json"
-)
-
 
 # ============================================================
-# DEFAULT TEMPERATURE THRESHOLDS
-# ============================================================
-
-DEFAULT_THRESHOLDS = {
-    "warning": 35.0,
-    "critical": 40.0
-}
-
-
-# ============================================================
-# INITIALIZE DATA FILE
+# INITIALIZE CSV
 # ============================================================
 
 def initialize_data_file():
@@ -102,93 +100,7 @@ def initialize_data_file():
             ])
 
 
-# ============================================================
-# LOAD THRESHOLDS
-# ============================================================
-
-def load_thresholds():
-
-    if not os.path.exists(THRESHOLD_FILE):
-
-        thresholds = {
-            area: DEFAULT_THRESHOLDS.copy()
-            for area in AREAS
-        }
-
-        save_thresholds(thresholds)
-
-        return thresholds
-
-
-    try:
-
-        with open(
-            THRESHOLD_FILE,
-            "r",
-            encoding="utf-8"
-        ) as f:
-
-            thresholds = json.load(f)
-
-
-        # Make sure all areas exist
-
-        for area in AREAS:
-
-            if area not in thresholds:
-
-                thresholds[area] = DEFAULT_THRESHOLDS.copy()
-
-            else:
-
-                thresholds[area].setdefault(
-                    "warning",
-                    DEFAULT_THRESHOLDS["warning"]
-                )
-
-                thresholds[area].setdefault(
-                    "critical",
-                    DEFAULT_THRESHOLDS["critical"]
-                )
-
-
-        return thresholds
-
-
-    except Exception:
-
-        return {
-            area: DEFAULT_THRESHOLDS.copy()
-            for area in AREAS
-        }
-
-
-# ============================================================
-# SAVE THRESHOLDS
-# ============================================================
-
-def save_thresholds(thresholds):
-
-    with open(
-        THRESHOLD_FILE,
-        "w",
-        encoding="utf-8"
-    ) as f:
-
-        json.dump(
-            thresholds,
-            f,
-            indent=4
-        )
-
-
-# ============================================================
-# INITIALIZE
-# ============================================================
-
 initialize_data_file()
-
-thresholds = load_thresholds()
 
 
 # ============================================================
@@ -200,13 +112,18 @@ def login_required(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
 
-        if not session.get("logged_in"):
+        if not session.get(
+            "logged_in"
+        ):
 
             return redirect(
                 url_for("login")
             )
 
-        return func(*args, **kwargs)
+        return func(
+            *args,
+            **kwargs
+        )
 
     return wrapper
 
@@ -226,32 +143,42 @@ LOGIN_HTML = """
 <meta name="viewport"
       content="width=device-width, initial-scale=1">
 
-<title>Environmental Monitoring</title>
+<title>
+Shop Floor Temperature Monitoring
+</title>
+
 
 <style>
+
+* {
+    box-sizing: border-box;
+}
+
 
 body {
 
     margin: 0;
 
-    font-family: Arial, sans-serif;
-
-    background:
-        linear-gradient(
-            135deg,
-            #101827,
-            #18253b
-        );
-
-    color: white;
-
     min-height: 100vh;
 
     display: flex;
 
+    align-items: center;
+
     justify-content: center;
 
-    align-items: center;
+    font-family:
+        Arial,
+        sans-serif;
+
+    color: white;
+
+    background:
+        linear-gradient(
+            135deg,
+            #0f172a,
+            #172554
+        );
 }
 
 
@@ -263,27 +190,44 @@ body {
 
     padding: 30px;
 
-    background: rgba(
-        255,
-        255,
-        255,
-        0.08
-    );
-
     border-radius: 20px;
 
-    backdrop-filter: blur(15px);
+    background:
+        rgba(
+            255,
+            255,
+            255,
+            0.08
+        );
+
+    border:
+        1px solid
+        rgba(
+            255,
+            255,
+            255,
+            0.08
+        );
+
+    backdrop-filter:
+        blur(15px);
 
     box-shadow:
         0 20px 60px
-        rgba(0,0,0,0.4);
-
+        rgba(
+            0,
+            0,
+            0,
+            0.4
+        );
 }
 
 
 h2 {
 
     text-align: center;
+
+    margin-top: 0;
 
     margin-bottom: 25px;
 
@@ -294,8 +238,6 @@ input {
 
     width: 100%;
 
-    box-sizing: border-box;
-
     padding: 13px;
 
     margin-bottom: 15px;
@@ -304,17 +246,26 @@ input {
 
     border-radius: 10px;
 
-    background: rgba(
-        255,
-        255,
-        255,
-        0.12
-    );
+    outline: none;
+
+    background:
+        rgba(
+            255,
+            255,
+            255,
+            0.12
+        );
 
     color: white;
 
     font-size: 15px;
+}
 
+
+input::placeholder {
+
+    color:
+        #aeb9cc;
 }
 
 
@@ -328,7 +279,8 @@ button {
 
     border-radius: 10px;
 
-    background: #2563eb;
+    background:
+        #2563eb;
 
     color: white;
 
@@ -341,7 +293,8 @@ button {
 
 .error {
 
-    color: #ff7777;
+    color:
+        #ff7777;
 
     text-align: center;
 
@@ -359,7 +312,10 @@ button {
 
 <div class="login-box">
 
-<h2>🌡 Environmental Monitor</h2>
+
+<h2>
+🌡 Temperature Monitor
+</h2>
 
 
 {% if error %}
@@ -372,6 +328,7 @@ button {
 
 
 <form method="POST">
+
 
 <input
     type="text"
@@ -393,10 +350,12 @@ button {
 Login
 </button>
 
+
 </form>
 
 
 </div>
+
 
 </body>
 
@@ -406,7 +365,7 @@ Login
 
 
 # ============================================================
-# LOGIN ROUTE
+# LOGIN
 # ============================================================
 
 @app.route(
@@ -470,7 +429,7 @@ def logout():
 
 
 # ============================================================
-# RECEIVE DATA FROM ESP32
+# RECEIVE ESP32 DATA
 # ============================================================
 
 @app.route(
@@ -491,38 +450,44 @@ def receive_data():
 
             return jsonify({
                 "status": "error",
-                "message": "No JSON data received"
+                "message":
+                    "No JSON data received"
             }), 400
 
 
-        area = data.get("area")
+        # ----------------------------------------------------
+        # AREA
+        # ----------------------------------------------------
+
+        area = data.get(
+            "area"
+        )
+
+
+        if area not in AREAS:
+
+            return jsonify({
+                "status": "error",
+                "message":
+                    "Invalid area"
+            }), 400
+
+
+        # ----------------------------------------------------
+        # TEMPERATURE
+        # ----------------------------------------------------
 
         temperature = data.get(
             "temperature"
         )
 
 
-        # ----------------------------------------------------
-        # Validate area
-        # ----------------------------------------------------
-
-        if area not in AREAS:
-
-            return jsonify({
-                "status": "error",
-                "message": "Invalid area"
-            }), 400
-
-
-        # ----------------------------------------------------
-        # Validate temperature
-        # ----------------------------------------------------
-
         if temperature is None:
 
             return jsonify({
                 "status": "error",
-                "message": "Temperature missing"
+                "message":
+                    "Temperature missing"
             }), 400
 
 
@@ -532,7 +497,7 @@ def receive_data():
 
 
         # ----------------------------------------------------
-        # Timestamp
+        # TIMESTAMP
         # ----------------------------------------------------
 
         timestamp = datetime.now(
@@ -541,7 +506,7 @@ def receive_data():
 
 
         # ----------------------------------------------------
-        # Save
+        # SAVE TO CSV
         # ----------------------------------------------------
 
         with open(
@@ -561,15 +526,22 @@ def receive_data():
 
 
         print(
-            f"[DATA] {area}: "
+            f"[DATA] "
+            f"{area} → "
             f"{temperature:.2f} °C"
         )
 
 
         return jsonify({
-            "status": "success",
-            "area": area,
-            "temperature": temperature
+
+            "status":
+                "success",
+
+            "area":
+                area,
+
+            "temperature":
+                temperature
         })
 
 
@@ -580,21 +552,30 @@ def receive_data():
             str(e)
         )
 
+
         return jsonify({
-            "status": "error",
-            "message": str(e)
+
+            "status":
+                "error",
+
+            "message":
+                str(e)
+
         }), 500
 
 
 # ============================================================
-# READ ALL DATA
+# READ CSV DATA
 # ============================================================
 
 def read_data():
 
     rows = []
 
-    if not os.path.exists(DATA_FILE):
+
+    if not os.path.exists(
+        DATA_FILE
+    ):
 
         return rows
 
@@ -615,16 +596,24 @@ def read_data():
                 try:
 
                     rows.append({
+
                         "timestamp":
-                            row["timestamp"],
+                            row[
+                                "timestamp"
+                            ],
 
                         "area":
-                            row["area"],
+                            row[
+                                "area"
+                            ],
 
                         "temperature":
                             float(
-                                row["temperature"]
+                                row[
+                                    "temperature"
+                                ]
                             )
+
                     })
 
                 except Exception:
@@ -644,24 +633,29 @@ def read_data():
 
 
 # ============================================================
-# LATEST READING FOR EACH AREA
+# GET LATEST READING
 # ============================================================
 
 def get_latest():
 
     data = read_data()
 
-    latest = {}
 
+    latest = {
 
-    for area in AREAS:
+        area:
+            None
 
-        latest[area] = None
+        for area in AREAS
+
+    }
 
 
     for row in data:
 
-        area = row["area"]
+        area = row[
+            "area"
+        ]
 
 
         if area not in AREAS:
@@ -684,19 +678,17 @@ def get_latest():
 
 
 # ============================================================
-# TEMPERATURE STATUS
+# OFFLINE DETECTION
 # ============================================================
 
-def get_status(area, temperature, timestamp):
+def get_status(
+    timestamp
+):
 
-    if temperature is None:
+    if not timestamp:
 
         return "OFFLINE"
 
-
-    # --------------------------------------------------------
-    # Offline after 2 minutes
-    # --------------------------------------------------------
 
     try:
 
@@ -718,33 +710,19 @@ def get_status(area, temperature, timestamp):
         ).total_seconds()
 
 
+        # Offline if no data for 2 minutes
+
         if age > 120:
 
             return "OFFLINE"
 
 
+        return "ONLINE"
+
+
     except Exception:
 
-        pass
-
-
-    area_thresholds = thresholds.get(
-        area,
-        DEFAULT_THRESHOLDS
-    )
-
-
-    if temperature >= area_thresholds["critical"]:
-
-        return "CRITICAL"
-
-
-    if temperature >= area_thresholds["warning"]:
-
-        return "WARNING"
-
-
-    return "NORMAL"
+        return "OFFLINE"
 
 
 # ============================================================
@@ -757,42 +735,60 @@ def latest_api():
 
     latest = get_latest()
 
+
     result = {}
 
 
     for area in AREAS:
 
-        item = latest.get(area)
+        item = latest.get(
+            area
+        )
 
 
         if item is None:
 
             result[area] = {
-                "temperature": None,
-                "timestamp": None,
-                "status": "OFFLINE"
+
+                "temperature":
+                    None,
+
+                "timestamp":
+                    None,
+
+                "status":
+                    "OFFLINE"
+
             }
+
 
         else:
 
             result[area] = {
 
                 "temperature":
-                    item["temperature"],
+                    item[
+                        "temperature"
+                    ],
 
                 "timestamp":
-                    item["timestamp"],
+                    item[
+                        "timestamp"
+                    ],
 
                 "status":
                     get_status(
-                        area,
-                        item["temperature"],
-                        item["timestamp"]
+                        item[
+                            "timestamp"
+                        ]
                     )
+
             }
 
 
-    return jsonify(result)
+    return jsonify(
+        result
+    )
 
 
 # ============================================================
@@ -803,12 +799,17 @@ def latest_api():
     "/history/<path:area>"
 )
 
-def history_api(area):
+def history_api(
+    area
+):
 
     if area not in AREAS:
 
         return jsonify({
-            "error": "Invalid area"
+
+            "error":
+                "Invalid area"
+
         }), 404
 
 
@@ -828,7 +829,9 @@ def history_api(area):
 
 
     cutoff = (
-        datetime.now(timezone.utc)
+        datetime.now(
+            timezone.utc
+        )
         -
         timedelta(
             minutes=minutes
@@ -841,7 +844,9 @@ def history_api(area):
 
     for row in read_data():
 
-        if row["area"] != area:
+        if row[
+            "area"
+        ] != area:
 
             continue
 
@@ -849,7 +854,9 @@ def history_api(area):
         try:
 
             timestamp = datetime.fromisoformat(
-                row["timestamp"].replace(
+                row[
+                    "timestamp"
+                ].replace(
                     "Z",
                     "+00:00"
                 )
@@ -861,10 +868,15 @@ def history_api(area):
                 result.append({
 
                     "timestamp":
-                        row["timestamp"],
+                        row[
+                            "timestamp"
+                        ],
 
                     "temperature":
-                        row["temperature"]
+                        row[
+                            "temperature"
+                        ]
+
                 })
 
 
@@ -873,11 +885,13 @@ def history_api(area):
             continue
 
 
-    return jsonify(result)
+    return jsonify(
+        result
+    )
 
 
 # ============================================================
-# DASHBOARD HTML
+# DASHBOARD
 # ============================================================
 
 DASHBOARD_HTML = """
@@ -891,7 +905,9 @@ DASHBOARD_HTML = """
 <meta name="viewport"
       content="width=device-width, initial-scale=1">
 
-<title>Environmental Monitoring</title>
+<title>
+Shop Floor Temperature Monitoring
+</title>
 
 
 <style>
@@ -905,9 +921,13 @@ body {
 
     margin: 0;
 
+    min-height: 100vh;
+
     font-family:
         Arial,
         sans-serif;
+
+    color: white;
 
     background:
         linear-gradient(
@@ -915,26 +935,26 @@ body {
             #0f172a,
             #172554
         );
-
-    color: white;
-
-    min-height: 100vh;
 }
 
 
 .header {
 
-    padding: 20px;
+    max-width: 1400px;
+
+    margin: auto;
+
+    padding: 22px;
 
     display: flex;
 
-    justify-content: space-between;
-
     align-items: center;
+
+    justify-content: space-between;
 
     flex-wrap: wrap;
 
-    gap: 10px;
+    gap: 15px;
 }
 
 
@@ -943,16 +963,19 @@ body {
     font-size: 25px;
 
     font-weight: bold;
+
 }
 
 
 .subtitle {
 
-    color: #aeb9cc;
-
     margin-top: 5px;
 
+    color:
+        #94a3b8;
+
     font-size: 13px;
+
 }
 
 
@@ -984,7 +1007,8 @@ body {
 
     margin: auto;
 
-    padding: 15px;
+    padding:
+        10px 20px 30px;
 }
 
 
@@ -1007,7 +1031,7 @@ body {
 
 .card {
 
-    padding: 22px;
+    padding: 24px;
 
     border-radius: 20px;
 
@@ -1058,18 +1082,20 @@ body {
 
 .area {
 
-    font-size: 17px;
+    font-size: 18px;
 
     font-weight: bold;
 
-    margin-bottom: 20px;
+    min-height: 44px;
 
 }
 
 
 .temperature {
 
-    font-size: 42px;
+    margin-top: 15px;
+
+    font-size: 43px;
 
     font-weight: bold;
 
@@ -1080,7 +1106,8 @@ body {
 
     font-size: 20px;
 
-    color: #aeb9cc;
+    color:
+        #94a3b8;
 
 }
 
@@ -1098,31 +1125,17 @@ body {
 }
 
 
-.status.NORMAL {
+.status.ONLINE {
 
-    color: #58d68d;
-
-}
-
-
-.status.WARNING {
-
-    color: #f5c542;
-
-}
-
-
-.status.CRITICAL {
-
-    color: #ff6b6b;
-
+    color:
+        #58d68d;
 }
 
 
 .status.OFFLINE {
 
-    color: #9ca3af;
-
+    color:
+        #9ca3af;
 }
 
 
@@ -1132,8 +1145,8 @@ body {
 
     font-size: 11px;
 
-    color: #94a3b8;
-
+    color:
+        #64748b;
 }
 
 
@@ -1143,12 +1156,10 @@ body {
 
     margin-top: 35px;
 
-    padding-bottom: 20px;
-
-    color: #64748b;
+    color:
+        #64748b;
 
     font-size: 12px;
-
 }
 
 
@@ -1162,11 +1173,13 @@ body {
 
 <div class="header">
 
+
 <div>
 
 <div class="title">
 🌡 Shop Floor Temperature Monitoring
 </div>
+
 
 <div class="subtitle">
 MLX90614 • ESP32-C3 • Real-time monitoring
@@ -1182,10 +1195,12 @@ MLX90614 • ESP32-C3 • Real-time monitoring
 Logout
 </a>
 
+
 </div>
 
 
 <div class="container">
+
 
 <div
     id="cards"
@@ -1195,10 +1210,9 @@ Logout
 
 
 <div class="footer">
-
 Automatic refresh every 10 seconds
-
 </div>
+
 
 </div>
 
@@ -1206,35 +1220,55 @@ Automatic refresh every 10 seconds
 <script>
 
 
-const AREAS = {{ areas | tojson }};
+const AREAS =
+    {{ areas | tojson }};
 
 
-function formatTime(timestamp) {
+
+function formatTime(
+    timestamp
+) {
 
     if (!timestamp) {
+
         return "No data received";
     }
 
 
     const date =
-        new Date(timestamp);
+        new Date(
+            timestamp
+        );
 
 
     return date.toLocaleString(
         undefined,
         {
-            day: "2-digit",
-            month: "short",
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit"
+
+            day:
+                "2-digit",
+
+            month:
+                "short",
+
+            hour:
+                "2-digit",
+
+            minute:
+                "2-digit",
+
+            second:
+                "2-digit"
+
         }
     );
 }
 
 
 
-function createCards(data) {
+function createCards(
+    data
+) {
 
     const container =
         document.getElementById(
@@ -1267,7 +1301,8 @@ function createCards(data) {
             if (item) {
 
                 if (
-                    item.temperature !== null
+                    item.temperature
+                    !== null
                 ) {
 
                     temperature =
@@ -1278,7 +1313,8 @@ function createCards(data) {
 
 
                 status =
-                    item.status ||
+                    item.status
+                    ||
                     "OFFLINE";
 
 
@@ -1316,7 +1352,9 @@ function createCards(data) {
 
                 <div class="temperature">
                     ${temperature}
-                    <span class="unit">°C</span>
+                    <span class="unit">
+                        °C
+                    </span>
                 </div>
 
                 <div class="status ${status}">
@@ -1348,7 +1386,8 @@ async function updateDashboard() {
             await fetch(
                 "/latest",
                 {
-                    cache: "no-store"
+                    cache:
+                        "no-store"
                 }
             );
 
@@ -1357,7 +1396,9 @@ async function updateDashboard() {
             await response.json();
 
 
-        createCards(data);
+        createCards(
+            data
+        );
 
 
     } catch (error) {
@@ -1368,6 +1409,7 @@ async function updateDashboard() {
         );
     }
 }
+
 
 
 updateDashboard();
@@ -1390,7 +1432,7 @@ setInterval(
 
 
 # ============================================================
-# DASHBOARD
+# DASHBOARD ROUTE
 # ============================================================
 
 @app.route("/")
@@ -1400,13 +1442,16 @@ setInterval(
 def dashboard():
 
     return render_template_string(
+
         DASHBOARD_HTML,
+
         areas=AREAS
+
     )
 
 
 # ============================================================
-# AREA PAGE
+# AREA DETAIL PAGE
 # ============================================================
 
 AREA_HTML = """
@@ -1420,19 +1465,34 @@ AREA_HTML = """
 <meta name="viewport"
       content="width=device-width, initial-scale=1">
 
-<title>{{ area }}</title>
+<title>
+{{ area }}
+</title>
 
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src=
+"https://cdn.jsdelivr.net/npm/chart.js">
+</script>
 
 
 <style>
+
+* {
+    box-sizing: border-box;
+}
+
 
 body {
 
     margin: 0;
 
-    font-family: Arial, sans-serif;
+    min-height: 100vh;
+
+    font-family:
+        Arial,
+        sans-serif;
+
+    color: white;
 
     background:
         linear-gradient(
@@ -1440,42 +1500,47 @@ body {
             #0f172a,
             #172554
         );
-
-    color: white;
-
 }
 
 
 .header {
 
-    padding: 20px;
-
     max-width: 1200px;
 
     margin: auto;
 
+    padding: 22px;
 }
 
 
 .back {
 
-    color: #93c5fd;
+    color:
+        #93c5fd;
 
     text-decoration: none;
-
 }
 
 
 h1 {
+
+    margin-top: 20px;
 
     margin-bottom: 5px;
 
 }
 
 
+.subtitle {
+
+    color:
+        #94a3b8;
+}
+
+
 .current {
 
-    margin-top: 20px;
+    margin-top: 25px;
 
     padding: 25px;
 
@@ -1492,7 +1557,17 @@ h1 {
 }
 
 
+.current-label {
+
+    color:
+        #94a3b8;
+
+}
+
+
 .current-temp {
+
+    margin-top: 8px;
 
     font-size: 48px;
 
@@ -1501,12 +1576,11 @@ h1 {
 }
 
 
-.status {
+.current-status {
 
     margin-top: 10px;
 
     font-weight: bold;
-
 }
 
 
@@ -1519,7 +1593,6 @@ h1 {
     flex-wrap: wrap;
 
     gap: 8px;
-
 }
 
 
@@ -1534,6 +1607,8 @@ button {
 
     cursor: pointer;
 
+    color: white;
+
     background:
         rgba(
             255,
@@ -1541,9 +1616,6 @@ button {
             255,
             0.10
         );
-
-    color: white;
-
 }
 
 
@@ -1556,7 +1628,6 @@ button:hover {
             255,
             0.20
         );
-
 }
 
 
@@ -1577,16 +1648,6 @@ button:hover {
         );
 
     height: 450px;
-
-}
-
-
-canvas {
-
-    width: 100% !important;
-
-    height: 100% !important;
-
 }
 
 
@@ -1614,16 +1675,15 @@ canvas {
 </h1>
 
 
-<div>
-Temperature Monitoring
+<div class="subtitle">
+Temperature History
 </div>
 
 
-<div
-    class="current"
->
+<div class="current">
 
-<div>
+
+<div class="current-label">
 Current Temperature
 </div>
 
@@ -1638,9 +1698,9 @@ Current Temperature
 
 <div
     id="currentStatus"
-    class="status"
+    class="current-status"
 >
-OFFLINE
+● OFFLINE
 </div>
 
 
@@ -1649,40 +1709,65 @@ OFFLINE
 
 <div class="controls">
 
-<button onclick="loadHistory(15)">
+
+<button
+    onclick="loadHistory(15)"
+>
 15 min
 </button>
 
-<button onclick="loadHistory(30)">
+
+<button
+    onclick="loadHistory(30)"
+>
 30 min
 </button>
 
-<button onclick="loadHistory(60)">
+
+<button
+    onclick="loadHistory(60)"
+>
 1 hour
 </button>
 
-<button onclick="loadHistory(360)">
+
+<button
+    onclick="loadHistory(360)"
+>
 6 hours
 </button>
 
-<button onclick="loadHistory(1440)">
+
+<button
+    onclick="loadHistory(1440)"
+>
 24 hours
 </button>
 
-<button onclick="loadHistory(10080)">
+
+<button
+    onclick="loadHistory(10080)"
+>
 7 days
 </button>
 
-<button onclick="loadHistory(43200)">
+
+<button
+    onclick="loadHistory(43200)"
+>
 30 days
 </button>
+
 
 </div>
 
 
 <div class="chart-box">
 
-<canvas id="temperatureChart"></canvas>
+<canvas
+    id="temperatureChart"
+>
+</canvas>
 
 </div>
 
@@ -1697,7 +1782,8 @@ const AREA =
     {{ area | tojson }};
 
 
-let chart = null;
+let chart =
+    null;
 
 
 
@@ -1706,12 +1792,16 @@ function createChart(
     values
 ) {
 
-    const ctx =
-        document
-        .getElementById(
+    const canvas =
+        document.getElementById(
             "temperatureChart"
-        )
-        .getContext("2d");
+        );
+
+
+    const ctx =
+        canvas.getContext(
+            "2d"
+        );
 
 
     if (chart) {
@@ -1725,44 +1815,60 @@ function createChart(
             ctx,
             {
 
-                type: "line",
+                type:
+                    "line",
+
 
                 data: {
 
-                    labels: labels,
+                    labels:
+                        labels,
+
 
                     datasets: [{
 
                         label:
                             "Temperature (°C)",
 
-                        data: values,
+                        data:
+                            values,
 
-                        borderWidth: 2,
+                        borderWidth:
+                            2,
 
-                        pointRadius: 1,
+                        pointRadius:
+                            1,
 
-                        tension: 0.25,
+                        tension:
+                            0.25,
 
-                        fill: false
+                        fill:
+                            false
 
                     }]
 
                 },
 
+
                 options: {
 
-                    responsive: true,
+                    responsive:
+                        true,
 
-                    maintainAspectRatio: false,
+                    maintainAspectRatio:
+                        false,
+
 
                     interaction: {
 
-                        intersect: false,
+                        intersect:
+                            false,
 
-                        mode: "index"
+                        mode:
+                            "index"
 
                     },
+
 
                     scales: {
 
@@ -1787,6 +1893,7 @@ function createChart(
 
                         },
 
+
                         y: {
 
                             ticks: {
@@ -1806,6 +1913,7 @@ function createChart(
                         }
 
                     },
+
 
                     plugins: {
 
@@ -1838,12 +1946,17 @@ async function loadHistory(
 
         const response =
             await fetch(
+
                 "/history/" +
+
                 encodeURIComponent(
                     AREA
                 ) +
+
                 "?minutes=" +
+
                 minutes
+
             );
 
 
@@ -1854,11 +1967,15 @@ async function loadHistory(
         const labels =
             data.map(
                 item =>
+
                     new Date(
                         item.timestamp
                     ).toLocaleString(
+
                         undefined,
+
                         {
+
                             hour:
                                 "2-digit",
 
@@ -1870,7 +1987,9 @@ async function loadHistory(
 
                             month:
                                 "short"
+
                         }
+
                     )
             );
 
@@ -1906,7 +2025,8 @@ async function updateCurrent() {
             await fetch(
                 "/latest",
                 {
-                    cache: "no-store"
+                    cache:
+                        "no-store"
                 }
             );
 
@@ -1938,13 +2058,16 @@ async function updateCurrent() {
 
 
         if (
-            item.temperature === null
+            item.temperature
+            === null
         ) {
 
             tempElement.innerText =
                 "-- °C";
 
-        } else {
+        }
+
+        else {
 
             tempElement.innerText =
                 Number(
@@ -1960,17 +2083,21 @@ async function updateCurrent() {
             item.status;
 
 
-        statusElement.style.color =
-            item.status === "NORMAL"
-                ? "#58d68d"
-                :
-            item.status === "WARNING"
-                ? "#f5c542"
-                :
-            item.status === "CRITICAL"
-                ? "#ff6b6b"
-                :
+        if (
+            item.status ===
+            "ONLINE"
+        ) {
+
+            statusElement.style.color =
+                "#58d68d";
+
+        }
+
+        else {
+
+            statusElement.style.color =
                 "#9ca3af";
+        }
 
 
     } catch (error) {
@@ -1983,7 +2110,10 @@ async function updateCurrent() {
 
 
 
-loadHistory(60);
+loadHistory(
+    60
+);
+
 
 updateCurrent();
 
@@ -2005,7 +2135,7 @@ setInterval(
 
 
 # ============================================================
-# AREA PAGE ROUTE
+# AREA ROUTE
 # ============================================================
 
 @app.route(
@@ -2014,282 +2144,25 @@ setInterval(
 
 @login_required
 
-def area_page(area):
+def area_page(
+    area
+):
 
     if area not in AREAS:
 
         return redirect(
-            url_for("dashboard")
+            url_for(
+                "dashboard"
+            )
         )
 
 
     return render_template_string(
+
         AREA_HTML,
+
         area=area
-    )
 
-
-# ============================================================
-# SETTINGS PAGE
-# ============================================================
-
-SETTINGS_HTML = """
-
-<!DOCTYPE html>
-
-<html>
-
-<head>
-
-<meta name="viewport"
-      content="width=device-width, initial-scale=1">
-
-<title>Temperature Settings</title>
-
-
-<style>
-
-body {
-
-    margin: 0;
-
-    font-family: Arial, sans-serif;
-
-    background:
-        linear-gradient(
-            135deg,
-            #0f172a,
-            #172554
-        );
-
-    color: white;
-
-}
-
-
-.container {
-
-    max-width: 900px;
-
-    margin: auto;
-
-    padding: 25px;
-
-}
-
-
-a {
-
-    color: #93c5fd;
-
-}
-
-
-.card {
-
-    margin-top: 20px;
-
-    padding: 20px;
-
-    border-radius: 18px;
-
-    background:
-        rgba(
-            255,
-            255,
-            255,
-            0.08
-        );
-
-}
-
-
-input {
-
-    width: 100px;
-
-    padding: 9px;
-
-    margin:
-        5px 10px 5px 5px;
-
-    border: none;
-
-    border-radius: 8px;
-
-}
-
-
-button {
-
-    padding:
-        10px 20px;
-
-    border: none;
-
-    border-radius: 9px;
-
-    background: #2563eb;
-
-    color: white;
-
-    cursor: pointer;
-
-}
-
-
-</style>
-
-</head>
-
-
-<body>
-
-
-<div class="container">
-
-
-<a href="/">
-← Dashboard
-</a>
-
-
-<h1>
-Temperature Thresholds
-</h1>
-
-
-<form method="POST">
-
-
-{% for area in areas %}
-
-<div class="card">
-
-<h3>
-{{ area }}
-</h3>
-
-
-<label>
-Warning:
-</label>
-
-<input
-    type="number"
-    step="0.1"
-    name="{{ area }}_warning"
-    value="{{ thresholds[area]['warning'] }}"
->
-
-
-<label>
-Critical:
-</label>
-
-<input
-    type="number"
-    step="0.1"
-    name="{{ area }}_critical"
-    value="{{ thresholds[area]['critical'] }}"
->
-
-
-</div>
-
-{% endfor %}
-
-
-<br>
-
-
-<button type="submit">
-Save Settings
-</button>
-
-
-</form>
-
-
-</div>
-
-
-</body>
-
-</html>
-
-"""
-
-
-# ============================================================
-# SETTINGS ROUTE
-# ============================================================
-
-@app.route(
-    "/settings",
-    methods=["GET", "POST"]
-)
-
-@login_required
-
-def settings():
-
-    global thresholds
-
-
-    if request.method == "POST":
-
-        for area in AREAS:
-
-            warning =
-                request.form.get(
-                    area + "_warning"
-                )
-
-            critical =
-                request.form.get(
-                    area + "_critical"
-                )
-
-
-            try:
-
-                warning =
-                    float(warning)
-
-                critical =
-                    float(critical)
-
-
-                thresholds[area] = {
-
-                    "warning":
-                        warning,
-
-                    "critical":
-                        critical
-                }
-
-
-            except Exception:
-
-                pass
-
-
-        save_thresholds(
-            thresholds
-        )
-
-
-        return redirect(
-            url_for("settings")
-        )
-
-
-    return render_template_string(
-        SETTINGS_HTML,
-        areas=AREAS,
-        thresholds=thresholds
     )
 
 
@@ -2309,7 +2182,10 @@ def download():
         DATA_FILE
     ):
 
-        return "No data available."
+        return (
+            "No data available.",
+            404
+        )
 
 
     with open(
@@ -2328,10 +2204,13 @@ def download():
         mimetype="text/csv",
 
         headers={
+
             "Content-Disposition":
                 "attachment; "
                 "filename=temperature_data.csv"
+
         }
+
     )
 
 
@@ -2339,25 +2218,35 @@ def download():
 # HEALTH CHECK
 # ============================================================
 
-@app.route("/health")
+@app.route(
+    "/health"
+)
 
 def health():
 
     return jsonify({
-        "status": "ok",
+
+        "status":
+            "ok",
+
         "service":
             "Shop Floor Temperature Monitor"
+
     })
 
 
 # ============================================================
-# RUN
+# RUN APPLICATION
 # ============================================================
 
 if __name__ == "__main__":
 
     app.run(
+
         host="0.0.0.0",
+
         port=PORT,
+
         debug=False
+
     )
